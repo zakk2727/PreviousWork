@@ -1,0 +1,1075 @@
+---
+title: "Baseball IST707 Project"
+author: "Zachary Agrue, Patricia Mills, and Charles Vanleuvan"
+date: "5/5/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r cache = TRUE}
+knitr::opts_current$get(c(
+  "cache",
+  "cache.path",
+  "cache.rebuild",
+  "dependson",
+  "autodep"
+))  
+```
+# Introduction
+The 2011 film, Moneyball, tells the story of how Billy Beane and Paul DePodesta found a way to help the Oakland A’s improve their team with little money and a lot of data. Up to the A’s in 2002, players’ salaries and trade value were determined almost exclusively on the player’s batting average, RBIs, and homeruns with a dose of “gut feeling” from the scouts and coaches. That year, the Yankees players earned a combined 125,928,583. The A’s, by comparison, earned 39,679,746. Both teams were eliminated in the first round of the playoffs. Enter Sabermetrics.
+
+Paul DePodesta did not think in terms of buy players but to buy runs. The three players that the A’s got in the off season that year were sought out because they got on base, which is the first step to getting runs. This has completely changed the world of baseball over the 18 years since the A’s did it.
+
+In 2018, the Chicago White Sox lost 100 games. In 2019, they lost 89. While still a losing season, the team made some changes in the off season. Meanwhile, in 2018 the Washington Nationals were barely above .500 but in 2019, they won the World Series. What did these teams change? Can machine learning algorithms identify who they should trade in order to play a little Moneyball?
+
+
+```{r mlb2018, include = FALSE, echo = FALSE}
+#ONCE install.packages("sqldf")
+#ONCE install.packages("ggrepel")
+#ONCE install.packages("flexclust")
+#ONCE install.packages("CEC")
+#ONCE install.packages("GGally")
+require(sqldf)
+require(tidyr)
+require(dplyr)
+require(randomForest)
+require(caret)
+library(ggrepel)
+library(flexclust)
+library(CEC)
+library(arules)
+library(arulesViz)
+require(ggcorrplot)
+require(ggplot2)
+require(arules)
+require(arulesViz)
+library(GGally)
+library(factoextra)
+library(class)
+library(ggrepel)
+
+mlb2018gl <- read.csv("C:\\Users\\patty\\OneDrive\\IST707 Spring 2020\\Project\\GL2018.csv",header = FALSE, stringsAsFactors = FALSE)
+colnames(mlb2018gl) <- c("Date","GameNumber","DayWeek","Visitor","VisitorLeague","VisitorGameNumber","Home","HomeLeague","HomeGameNumber","VisitorScore","HomeScore","LengthGameOuts","DayNight","CompletionInfor","ForfeitInfo","ProtestInfo","ParkID","Attendance","TimeGameMinutes","VisitorLineScore","HomeLineScore","V_AtBats","V_Hits","V_Doubles","V_Triples","V_HRs","V_RBI","V_SacHits","V_SacFlies","V_HitByPitch","V_Walks","V_IntentionalWalks","V_Strikeouts","V_StolenBases","V_CaughtStealing","V_GroundDoublePlays","V_1stCatchersInterference","V_LeftOnBase","V_PitchersUsed","V_IndEarnedRuns","V_TeamEarnedRuns","V_Wild_Pitches","V_Balks","V_Putouts","V_Assists","V_Errors","V_PassedBalls","V_DoublePlays","V_TriplePlays","H_AtBats","H_Hits","H_Doubles","H_Triples","H_HRs","H_RBI","H_SacHits","H_SacFlies","H_HitByPitch","H_Walks","H_IntentionalWalks","H_Strikeouts","H_StolenBases","H_CaughtStealing","H_GroundDoublePlays","H_1stCatchersInterference","H_LeftOnBase","H_PitchersUsed","H_IndEarnedRuns","H_TeamEarnedRuns","H_Wild_Pitches","H_Balks","H_Putouts","H_Assists","H_Errors","H_PassedBalls","H_DoublePlays","H_TriplePlays","HomePlatUmpID","HomePlateUmpName","FirstBaseUmpID","FirstBaseUmpName","SecondBaseUmpID","SecondBaseUmpName","ThirdBaseUmpID","ThirdBaseUmpName","LFUmpID","LFUmpName","RFUmpID","RFUmpName","V_TeamManagerID","V_TeamManagerName","H_TeamManagerID","H_TeamManagerName","W_PitcherID","W_PitcherName","L_PitcherID","L_PitcherName","S_PitcherID","S_PitcherName","GW_RBIBatterID","GW_RBIBatterName","V_StartingPitcherID","V_StartingPitcherName","H_StartingPitcherID","H_StartingPitcherName","V_Batter1ID","V_Batter1Name","V_Batter1Position","V_Batter2ID","V_Batter2Name","V_Batter2Position","V_Batter3ID","V_Batter3Name","V_Batter3Position","V_Batter4ID","V_Batter4Name","V_Batter4Position","V_Batter5ID","V_Batter5Name","V_Batter5Position","V_Batter6ID","V_Batter6Name","V_Batter6Position","V_Batter7ID","V_Batter7Name","V_Batter7Position","V_Batter8ID","V_Batter8Name","V_Batter8Position","V_Batter9ID","V_Batter9Name","V_Batter9Position","H_Batter1ID","H_Batter1Name","H_Batter1Position","H_Batter2ID","H_Batter2Name","H_Batter2Position","H_Batter3ID","H_Batter3Name","H_Batter3Position","H_Batter4ID","H_Batter4Name","H_Batter4Position","H_Batter5ID","H_Batter5Name","H_Batter5Position","H_Batter6ID","H_Batter6Name","H_Batter6Position","H_Batter7ID","H_Batter7Name","H_Batter7Position","H_Batter8ID","H_Batter8Name","H_Batter8Position","H_Batter9ID","H_Batter9Name","H_Batter9Position","AcquisitionInfo")
+WinnersAndLosers <- sqldf("SELECT Home, Visitor, HomeScore, VisitorScore, CASE WHEN VisitorScore > HomeScore THEN Visitor WHEN HomeScore > VisitorScore THEN Home ELSE 'TIE' END AS Winner, CASE WHEN VisitorScore < HomeScore THEN Visitor WHEN HomeScore < VisitorScore THEN Home ELSE 'TIE' END AS Loser FROM mlb2018gl")
+Teams <- sqldf("SELECT DISTINCT Home AS Team FROM mlb2018gl")
+TeamRecords <- sqldf("SELECT Team,  (SELECT COUNT(Winner) FROM WinnersAndLosers W WHERE W.Winner = T.Team GROUP BY W.Winner) AS Wins, (SELECT COUNT(Loser) FROM WinnersAndLosers W WHERE W.Loser = T.Team GROUP BY W.Loser) AS Losses FROM Teams T")
+mlb2018glTEMP <- mlb2018gl[,c(-2,-6,-9,-12,-14,-15,-16,-17,-18,-19,-20,-21,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-96,-98,-100,-102,-104,-106,-109,-112,-115,-118,-121,-124,-127,-130,-133,-136,-139,-142,-145,-148,-151,-154,-157,-160)]
+str(mlb2018glTEMP)
+mlb2018gl <- mlb2018glTEMP
+ChicagoWhiteSox <- sqldf("SElECT * FROM mlb2018gl WHERE Home = 'CHA' OR Visitor = 'CHA'")
+ChicagoWhiteSox2018Batting <- read.csv("C:\\Users\\patty\\OneDrive\\IST707 Spring 2020\\Project\\CWS2018_BattingStatsForSeason_Clean.csv",header = TRUE, stringsAsFactors = FALSE)
+ChicagoWhiteSox2018Pitching <- read.csv("C:\\Users\\patty\\OneDrive\\IST707 Spring 2020\\Project\\CWS2018_PitchingStatsForSeason_Clean.csv",header = TRUE, stringsAsFactors = FALSE)
+BattingLineUps <- sqldf("SELECT Date, Home, Visitor AS Away, CASE WHEN VisitorScore > HomeScore THEN 'WIN' ELSE 'LOSS' END AS Result,  V_Batter1Name AS Batter1, V_Batter2Name AS Batter2, V_Batter3Name AS Batter3, V_Batter4Name AS Batter4, V_Batter5Name AS Batter5, V_Batter6Name AS Batter6, V_Batter7Name AS Batter7, V_Batter8Name AS Batter8, V_Batter9Name AS Batter9 FROM ChicagoWhiteSox WHERE Visitor = 'CHA' UNION SELECT Date, Home, Visitor AS Away, CASE WHEN HomeScore > VisitorScore THEN 'WIN' ELSE 'LOSS' END AS Result,  H_Batter1Name AS Batter1, H_Batter2Name AS Batter2, H_Batter3Name AS Batter3, H_Batter4Name AS Batter4, H_Batter5Name AS Batter5, H_Batter6Name AS Batter6, H_Batter7Name AS Batter7, H_Batter8Name AS Batter8, H_Batter9Name AS Batter9 FROM ChicagoWhiteSox WHERE Home = 'CHA'")
+WinningBattingLineups <- sqldf("SELECT Date, Home, Away, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM BattingLineUps WHERE Result = 'WIN'")
+WinningLineupCounts <- sqldf("SELECT DISTINCT Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM WinningBattingLineups")
+WashingtonNationals <- sqldf("SELECT * FROM mlb2018gl WHERE Home = 'WAS' OR Visitor = 'WAS'")
+WashingtonNationals2018Batting <- read.csv("C:\\Users\\patty\\OneDrive\\IST707 Spring 2020\\Project\\WAS2018_BattingStatsForSeason_Clean.csv",header = TRUE, stringsAsFactors = FALSE)
+WashingtonNationals2018Pitching <- read.csv("C:\\Users\\patty\\OneDrive\\IST707 Spring 2020\\Project\\WAS2018_PitchingStatsForSeason_Clean.csv",header = TRUE, stringsAsFactors = FALSE)
+CWSBattingLineUps <- sqldf("SELECT Date, Home, Visitor AS Away, CASE WHEN VisitorScore > HomeScore THEN 'WIN' ELSE 'LOSS' END AS Result,  V_Batter1Name AS Batter1, V_Batter2Name AS Batter2, V_Batter3Name AS Batter3, V_Batter4Name AS Batter4, V_Batter5Name AS Batter5, V_Batter6Name AS Batter6, V_Batter7Name AS Batter7, V_Batter8Name AS Batter8, V_Batter9Name AS Batter9 FROM ChicagoWhiteSox WHERE Visitor = 'CHA' UNION SELECT Date, Home, Visitor AS Away, CASE WHEN HomeScore > VisitorScore THEN 'WIN' ELSE 'LOSS' END AS Result,  H_Batter1Name AS Batter1, H_Batter2Name AS Batter2, H_Batter3Name AS Batter3, H_Batter4Name AS Batter4, H_Batter5Name AS Batter5, H_Batter6Name AS Batter6, H_Batter7Name AS Batter7, H_Batter8Name AS Batter8, H_Batter9Name AS Batter9 FROM ChicagoWhiteSox WHERE Home = 'CHA'")
+CWSWinningBattingLineups <- sqldf("SELECT Date, Home, Away, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM CWSBattingLineUps WHERE Result = 'WIN'")
+CWSWinningHomeLineups <- sqldf("SELECT DISTINCT Date, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM CWSWinningBattingLineups WHERE Home = 'CHA'")
+CWSWinningAwayLineups <- sqldf("SELECT DISTINCT Date, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM CWSWinningBattingLineups WHERE Away = 'CHA'")
+WASBattingLineUps <- sqldf("SELECT Date, Home, Visitor AS Away, CASE WHEN VisitorScore > HomeScore THEN 'WIN' ELSE 'LOSS' END AS Result,  V_Batter1Name AS Batter1, V_Batter2Name AS Batter2, V_Batter3Name AS Batter3, V_Batter4Name AS Batter4, V_Batter5Name AS Batter5, V_Batter6Name AS Batter6, V_Batter7Name AS Batter7, V_Batter8Name AS Batter8, V_Batter9Name AS Batter9 FROM WashingtonNationals WHERE Visitor = 'WAS' UNION SELECT Date, Home, Visitor AS Away, CASE WHEN HomeScore > VisitorScore THEN 'WIN' ELSE 'LOSS' END AS Result,  H_Batter1Name AS Batter1, H_Batter2Name AS Batter2, H_Batter3Name AS Batter3, H_Batter4Name AS Batter4, H_Batter5Name AS Batter5, H_Batter6Name AS Batter6, H_Batter7Name AS Batter7, H_Batter8Name AS Batter8, H_Batter9Name AS Batter9 FROM WashingtonNationals WHERE Home = 'WAS'")
+WASWinningBattingLineups <- sqldf("SELECT Date, Home, Away, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM WASBattingLineUps WHERE Result = 'WIN'")
+WASWinningHomeLineups <- sqldf("SELECT DISTINCT Date, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM WASWinningBattingLineups WHERE Home = 'CHA'")
+WASWinningAwayLineups <- sqldf("SELECT DISTINCT Date, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM WASWinningBattingLineups WHERE Away = 'WAS'")
+WASWinningHomeLineups <- sqldf("SELECT DISTINCT Date, Batter1, Batter2, Batter3, Batter4, Batter5, Batter6, Batter7, Batter8, Batter9 FROM WASWinningBattingLineups WHERE Home = 'WAS'")
+
+ChicagoWhiteSoxClean <- sqldf("SELECT
+                                  Date,
+                                  CASE WHEN Home = 'CHA' THEN Visitor ELSE Home END AS Opponent,
+                                  CASE WHEN Home = 'CHA' THEN 'HOME' ELSE 'AWAY' END AS Location,
+                                  CASE WHEN Home = 'CHA' THEN HomeScore ELSE VisitorScore END AS SoxScore,
+                                  CASE WHEN Home = 'CHA' THEN VisitorScore ELSE HomeScore END AS OpponentScore,
+                                  CASE WHEN Home = 'CHA' AND HomeScore > VisitorScore THEN 'WIN'
+                                       WHEN Visitor = 'CHA' AND VisitorScore > HomeScore THEN 'WIN'
+                                       ELSE 'LOSS'
+                                       END AS Result,
+                                  --CASE WHEN Home = 'CHA' THEN VisitorLeague ELSE HomeLeague END AS OpponentLeague,
+                                  DayNight,
+                                  CASE WHEN Home = 'CHA' THEN H_AtBats ELSE V_AtBats END AS SoxAtBats,
+                                  CASE WHEN Home = 'CHA' THEN H_Hits ELSE V_Hits END AS SoxHits,
+                                  CASE WHEN Home = 'CHA' THEN H_HRs ELSE V_HRs END AS SoxHRs,
+                                  CASE WHEN Home = 'CHA' THEN H_RBI ELSE V_RBI END AS SoxRBI,
+                                  CASE WHEN Home = 'CHA' THEN H_Walks ELSE V_Walks END AS SoxWalks,
+                                  CASE WHEN Home = 'CHA' THEN H_Strikeouts ELSE V_Strikeouts END AS SoxStrikeouts,
+                                  CASE WHEN Home = 'CHA' THEN H_StolenBases ELSE V_StolenBases END AS SoxStolenBases,
+                                  CASE WHEN Home = 'CHA' THEN V_AtBats ELSE H_AtBats END AS OpponentAtBats,
+                                  CASE WHEN Home = 'CHA' THEN V_Hits ELSE H_Hits END AS OpponentHits,
+                                  CASE WHEN Home = 'CHA' THEN V_HRs ELSE H_HRs END AS OpponentHRs,
+                                  CASE WHEN Home = 'CHA' THEN V_RBI ELSE H_RBI END AS OpponentRBI,
+                                  CASE WHEN Home = 'CHA' THEN V_Walks ELSE H_Walks END AS OpponentWalks,
+                                  CASE WHEN Home = 'CHA' THEN V_Strikeouts ELSE H_Strikeouts END AS OpponentStrikeouts,
+                                  CASE WHEN Home = 'CHA' THEN V_StolenBases ELSE H_StolenBases END AS OpponentStolenBases
+                                FROM ChicagoWhiteSox")
+WashingtonNationalsClean <- sqldf("SELECT
+                                  Date,
+                                  CASE WHEN Home = 'WAS' THEN Visitor ELSE Home END AS Opponent,
+                                  CASE WHEN Home = 'WAS' THEN 'HOME' ELSE 'AWAY' END AS Location,
+                                  CASE WHEN Home = 'WAS' THEN HomeScore ELSE VisitorScore END AS NatsScore,
+                                  CASE WHEN Home = 'WAS' THEN VisitorScore ELSE HomeScore END AS OpponentScore,
+                                  CASE WHEN Home = 'WAS' AND HomeScore > VisitorScore THEN 'WIN'
+                                       WHEN Visitor = 'WAS' AND VisitorScore > HomeScore THEN 'WIN'
+                                       ELSE 'LOSS'
+                                       END AS Result,
+                                  --CASE WHEN Home = 'WAS' THEN VisitorLeague ELSE HomeLeague END AS OpponentLeague,
+                                  DayNight,
+                                  CASE WHEN Home = 'WAS' THEN H_AtBats ELSE V_AtBats END AS NatsAtBats,
+                                  CASE WHEN Home = 'WAS' THEN H_Hits ELSE V_Hits END AS NatsHits,
+                                  CASE WHEN Home = 'WAS' THEN H_HRs ELSE V_HRs END AS NatsHRs,
+                                  CASE WHEN Home = 'WAS' THEN H_RBI ELSE V_RBI END AS NatsRBI,
+                                  CASE WHEN Home = 'WAS' THEN H_Walks ELSE V_Walks END AS NatsWalks,
+                                  CASE WHEN Home = 'WAS' THEN H_Strikeouts ELSE V_Strikeouts END AS NatsStrikeouts,
+                                  CASE WHEN Home = 'WAS' THEN H_StolenBases ELSE V_StolenBases END AS NatsStolenBases,
+                                  CASE WHEN Home = 'WAS' THEN V_AtBats ELSE H_AtBats END AS OpponentAtBats,
+                                  CASE WHEN Home = 'WAS' THEN V_Hits ELSE H_Hits END AS OpponentHits,
+                                  CASE WHEN Home = 'WAS' THEN V_HRs ELSE H_HRs END AS OpponentHRs,
+                                  CASE WHEN Home = 'WAS' THEN V_RBI ELSE H_RBI END AS OpponentRBI,
+                                  CASE WHEN Home = 'WAS' THEN V_Walks ELSE H_Walks END AS OpponentWalks,
+                                  CASE WHEN Home = 'WAS' THEN V_Strikeouts ELSE H_Strikeouts END AS OpponentStrikeouts,
+                                  CASE WHEN Home = 'WAS' THEN V_StolenBases ELSE H_StolenBases END AS OpponentStolenBases
+                                FROM WashingtonNationals")
+CWSSalaries18 <- read.csv("C:\\Users\\Patty\\OneDrive\\IST707 Spring 2020\\Project\\MLB Chicago AL 18 OD.csv",header = FALSE,stringsAsFactors = TRUE) 
+colnames(CWSSalaries18) <- c("Player2","Position","MLSRV","Agent","Length/TotalValue","sal2018")
+CWSSalaries18 <- CWSSalaries18[3:44,1:6]
+CWSSalaries18 <- CWSSalaries18[!CWSSalaries18$Position =="",]
+WASSalaries18 <- read.csv("C:\\Users\\Patty\\OneDrive\\IST707 Spring 2020\\Project\\MLB Washington 18 OD.csv",header = FALSE,stringsAsFactors = TRUE) 
+colnames(WASSalaries18) <- c("Player2","Position","MLSRV","Agent","Length/TotalValue","sal2018")
+WASSalaries18 <- WASSalaries18[3:44,1:6]
+colnames(ChicagoWhiteSox2018Batting)[3] <- "Player"
+colnames(ChicagoWhiteSox2018Pitching)[3] <- "Player"
+colnames(WashingtonNationals2018Batting)[3] <- "Player"
+colnames(WashingtonNationals2018Pitching)[3] <- "Player"
+CWSPlayer <- data.frame(do.call('rbind', strsplit(as.character(CWSSalaries18$Player),', ',fixed=TRUE)))
+CWSPlayer <- CWSPlayer %>% unite("Player", X2:X1, sep = " ",remove = FALSE)  
+CWSPlayer <- CWSPlayer %>% unite("Player2",X1:X2, sep = ", ",remove = FALSE)
+CWSSalaries18 <- merge.data.frame(CWSPlayer,CWSSalaries18,by = "Player2")
+CWSSalaries18$sal2018 <- gsub("\\$","",CWSSalaries18$sal2018)
+CWSSalaries18$sal2018 <- as.numeric(gsub(",","",CWSSalaries18$sal2018))
+CWSSalaries18 <- na.omit(CWSSalaries18)
+WASPlayer <- data.frame(do.call('rbind', strsplit(as.character(WASSalaries18$Player),', ',fixed=TRUE)))
+WASPlayer <- WASPlayer %>% unite("Player", X2:X1, sep = " ",remove = FALSE)  
+WASPlayer <- WASPlayer %>% unite("Player2",X1:X2, sep = ", ",remove = FALSE)
+WASSalaries18 <- merge.data.frame(WASPlayer,WASSalaries18,by = "Player2")
+WASSalaries18$sal2018 <- gsub("\\$","",WASSalaries18$sal2018)
+WASSalaries18$sal2018 <- as.numeric(gsub(",","",WASSalaries18$sal2018))
+WASSalaries18 <- na.omit(WASSalaries18)
+CWSsalbatstats18 <- merge(CWSSalaries18,ChicagoWhiteSox2018Batting,by = "Player")
+CWSsalbatstats18 <- CWSsalbatstats18 %>% mutate_at(vars(sal2018), funs(./1000000)) 
+WASsalbatstats18 <- merge(WASSalaries18,WashingtonNationals2018Batting,by = "Player")
+WASsalbatstats18 <- WASsalbatstats18 %>% mutate_at(vars(sal2018), funs(./1000000))
+CWSsalpitchstats18 <- merge(CWSSalaries18,ChicagoWhiteSox2018Pitching,by = "Player")
+CWSsalpitchstats18 <- CWSsalpitchstats18 %>% mutate_at(vars(sal2018),funs(./1000000))
+WASsalpitchstats18 <- merge(WASSalaries18,WashingtonNationals2018Pitching,by = "Player")
+WASsalpitchstats18 <- WASsalpitchstats18 %>% mutate_at(vars(sal2018),funs(./1000000))
+```
+
+# Analysis and Models
+
+## About the Data
+
+Scatterplots are key visual tools that describe relationships between two categories. In this report, pitching and hitting metrics are compared against player salary. The fundamental relationship that needs to be understood is player performance and player salary. Anecdotal evidence suggests that the more a player is paid, the better their performance is. 
+
+From the scatter plot matrix, pairs of features that show strong relationships can be observed.
+
+```{r CWScorrBatstats,include = TRUE, echo = FALSE}
+#correlation matrix for all hitting stats
+ggpairs(CWSsalbatstats18[,c(9,12,16,17,21,27,29)])
+```
+
+When considering game level data, the correlogram below shows high correlation for several statistics for the Chicago White Sox. Some are obvious correlations like the positive correlation between OpponentRBI and OpponentScore. Others seem less clear such as the slightly negative correlation between SoxHits and SoxStrikeouts.  Interestingly, there is not the same correlation for OpponentHits and OpponentStrikeouts. 
+
+``` {r CWScorrelation, include = TRUE, echo = FALSE}
+str(ChicagoWhiteSoxClean)
+CWScorrDF <- ChicagoWhiteSoxClean[,c(3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21)]
+str(CWScorrDF)
+CWScorrDF$Location[CWScorrDF$Location=="HOME"] <- 1
+CWScorrDF$Location[CWScorrDF$Location=="AWAY"] <- 0
+CWScorrDF$Result[CWScorrDF$Result=="WIN"] <- 1
+CWScorrDF$Result[CWScorrDF$Result=="LOSS"] <- 0
+CWScorrDF$Location <- as.numeric(CWScorrDF$Location)
+CWScorrDF$Result <- as.numeric(CWScorrDF$Result)
+# Correlation matrix
+CWScorr <- round(cor(CWScorrDF), 1)
+
+# Plot Correlogram
+ggcorrplot(CWScorr, hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="circle", 
+           colors = c("tomato2", "white", "#27251F"), 
+           title="Correlogram of Chicago White Sox Game Log", 
+           ggtheme=theme_bw)
+```
+
+Older players are more established in the league and typically can negotiate higher salary on previous years’ performance. However, age shows a weak correlation (max = 0.262 R) to most offensive statistics. The average salary of players over 28 years old is greater than 5 million, yet the average salary for players under 28 years is below 2 million. Salary does not have a R score greater than 0.1 for any of the offensive stats.
+
+```{r CWSsalage, include = TRUE, echo = FALSE}
+#white sox salary vs Age
+ggplot(CWSsalbatstats18,aes(x=Age,y=sal2018, label=Player)) + geom_text_repel() +geom_point(aes(size=G)) + ylab("Salaries 2018, in Millions") + xlab("Age") + ggtitle("White Sox Player Age by Salary") + labs(size = "Games Played")
+```
+
+Excluding pitchers, the OBP for position players does not scale well with salary. Of the top 3 salary earners on the team, only 2 of those players reside in the top 5 players with highest OBP. On base percentage is a record of how often a player reaches base safely. In theory, these on base events should translate to more Runs. A player that scores many runs is directly contributing to a team’s score and increases the chance of winning. 
+```{r CWSsalOBP, include = TRUE, echo = FALSE}
+#white sox Salary vs OBP
+ggplot(CWSsalbatstats18,aes(x=OBP,y=sal2018,color=RBI, label=Player)) + geom_text_repel() +geom_point(aes(size=G)) + ylab("Salaries 2018, in Millions") + xlab("On Base Percentage") + ggtitle("White Sox On Base Percentage by Salary") + labs(size = "Games Played")
+```
+
+On the White Sox, it isn’t necessarily true that higher OBP scales with runs. The R value for OBP by runs is 0.67, and yet the Tim Anderson, one of the lowest paid players, has the highest runs scored while nearly having the smallest OBP of the position players. If OBP is not a strong predictor for runs scored, then RBI might be. 
+
+```{r CWSOBPruns,include = TRUE,echo =FALSE}
+#white sox OBP vs Runs
+ggplot(CWSsalbatstats18,aes(x=OBP,y=R, label=Player)) + geom_text_repel() +geom_point(aes(size=sal2018)) + ylab("Runs") + xlab("On-Base Percentage") + ggtitle("White Sox Player OBP vs. Runs") + labs(size = "2018 Salary")
+```
+
+A strong R value (R = 0.958) between runs and RBI indicates that players who hit in more runs also individually contribute to the teams score by reaching homeplate safely themselves. Jose Abreu is the teams highest paid position player, has the most RBIs, and is third in runs scored. Two other players have similar performance to him, Tim Anderson and Yoan Moncada, yet they are paid significantly less than Abreu. 
+
+```{r CWSRunsRBI, include = TRUE,echo =FALSE }
+#white sox Runs vs RBI
+ggplot(CWSsalbatstats18,aes(x=RBI,y=R, label=Player)) + geom_text_repel() +geom_point(aes(size=sal2018)) + ylab("R") + xlab("RBI") + ggtitle("White Sox Player Runs vs. RBI") + labs(size = "2018 Salary")
+```
+
+Game winning RBIs are runs that a player hits in that end up being the winning run for the game. In this study, this can be looked at as the “clutch performance factor”. Certain players show the tendency to perform well given a game-deciding situation. Daniel Palka, with 12 runs batted in, has approximately 40% more GWRBI’s than his closest teammate. This tendency can be a strong influencing factor in deciding to keep a player or update his contract.
+
+```{r CWS Game Winning RBI plot, include = TRUE, echo = FALSE}
+#CWS game winning RBI plot
+CWSWins <- sqldf("select * from ChicagoWhiteSox where ((Visitor = 'CHA' AND VisitorScore > HomeScore) OR (Home = 'CHA' AND HomeScore > VisitorScore))")
+CWSGameWinningRBIs <-  sqldf("select GW_RBIBatterName, count(GW_RBIBatterName) from CWSWins group by GW_RBIBatterName")
+colnames(CWSGameWinningRBIs) <- c("Player","GWRBIs")
+CWSGameWinningRBIs <- CWSGameWinningRBIs[order(-CWSGameWinningRBIs$GWRBIs),]
+ggplot(CWSGameWinningRBIs[1:12,], aes(x=reorder(Player,-GWRBIs), y=GWRBIs))+ geom_text(aes(label=GWRBIs), vjust = -0.5)+ ggtitle("Chicago White Sox Game Winning RBI Leaders for 2018") +xlab("Player") + ylab("# of GWRBIs") +geom_col(color = '#27251F', fill='#C4CED4')+theme(axis.text.x = element_text(angle = 45,hjust=1))
+```
+
+A pitcher’s ERA is the gold standard for comparison between pitchers, where lower ERA is better. It is the total number of earned runs averaged out for every 9 innings pitched. The correlation between ERA and Salary suggests that ERA is a strong influence in a pitcher’s salary. Barring outliers Matt Davidson and Miguel Gonzalez (G = 3), as ERA decreases, the pitcher salary increases. The same relationship is exhibited by salary and the number of saved games. 
+
+```{r CWSsalERA, include= TRUE, echo=FALSE}
+#merge CWS pitcher stats and salaries
+CWSsalpitchstats18 <- merge(CWSSalaries18,ChicagoWhiteSox2018Pitching,by = "Player")
+CWSsalpitchstats18 <- CWSsalpitchstats18 %>% mutate_at(vars(sal2018),funs(./1000000))
+#white sox ERA vs salary
+ggplot(CWSsalpitchstats18,aes(x=ERA,y=sal2018,color=W.L., label=Player)) + geom_text_repel()+ geom_point(aes(size=SV)) + ylab("Salaries 2018, in Millions") + xlab("Earned Run Average") + ggtitle("White Sox Earned Run Average by Salary") + labs(size="Saved Games", color= "Win/Loss Percentage")
+```
+
+The Chicago White Sox pitching staff depend upon the batters to give run support to cover the pitcher’s earned runs. While Carson Fulmer’s run support average is over 6 runs per start, it does not counteract his Earned Run Average of 8.07. In fact, for the Sox pitching staff, Hector Santiago is the only pitcher whose average run support covers his ERA of 4.4, which explains why he has the highest win-loss percentage of the starting pitchers at 67%.
+
+```{r CWS pitcher run support plot, include = TRUE, echo = FALSE}
+#CWS pitcher run support plot
+CWSHomeGames <- sqldf("select HomeScore,H_StartingPitcherName from ChicagoWhiteSox where (Home = 'CHA')")
+colnames(CWSHomeGames) <- c("Score","Pitcher")
+CWSAwayGames <- sqldf("select VisitorScore, V_StartingPitcherName from ChicagoWhiteSox where (Visitor = 'CHA')")
+colnames(CWSAwayGames) <- c("Score","Pitcher")
+CWSPitcherRunSupport <- rbind.data.frame(CWSHomeGames,CWSAwayGames)
+CWSPitcherRunSupport <- aggregate(CWSPitcherRunSupport$Score, list(CWSPitcherRunSupport$Pitcher), mean)
+colnames(CWSPitcherRunSupport) <- c("Pitcher","AverageRunSupport")
+CWSPitcherRunSupport$AverageRunSupport <- round(CWSPitcherRunSupport$AverageRunSupport,2)
+ggplot(CWSPitcherRunSupport, aes(x=reorder(Pitcher,-AverageRunSupport),y=AverageRunSupport))+geom_text(aes(label=AverageRunSupport),vjust=-0.5) + ggtitle("Average Run Support for Chicago White Sox Starting Rotation") + xlab("Player")+ylab("Run Support per Start") + geom_col(color='#27251F',fill='#C4CED4')+ theme(axis.text.x = element_text(angle = 45,hjust=1))
+```
+
+The correlogram of the Washington Nationals’ game level statistics shows that there is a slight positive correlation between NatsWalks and NatsScore. With the rest of the correlations, there is not much that is not to be expected in baseball.
+
+``` {r WAScorrelation, include = TRUE, echo = FALSE}
+str(WashingtonNationalsClean)
+WAScorrDF <- WashingtonNationalsClean[,c(3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21)]
+str(WAScorrDF)
+WAScorrDF$Location[WAScorrDF$Location=="HOME"] <- 1
+WAScorrDF$Location[WAScorrDF$Location=="AWAY"] <- 0
+WAScorrDF$Result[WAScorrDF$Result=="WIN"] <- 1
+WAScorrDF$Result[WAScorrDF$Result=="LOSS"] <- 0
+WAScorrDF$Location <- as.numeric(WAScorrDF$Location)
+WAScorrDF$Result <- as.numeric(WAScorrDF$Result)
+# Correlation matrix
+WAScorr <- round(cor(WAScorrDF), 1)
+
+# Plot Correlogram
+ggcorrplot(WAScorr, hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="circle", 
+           colors = c("#14225A","white","#AB0003"), 
+           title="Correlogram of Washington Nationals Game Log", 
+           ggtheme=theme_bw)
+```
+
+Similar to the White Sox, there is only a weak correlation between salary and most major offensive categories (R < 0.25). Stronger correlations exist within the offensive categories themselves (R > 0.95)
+
+```{r WAScorrBatstats, include = TRUE, echo = FALSE}
+#correlation matrix for all hitting stats
+ggpairs(WASsalbatstats18[,c(9,12,16,17,21,27,29)])
+```
+
+Another consistency between the two ball clubs is that older players have higher salaries, without necessarily providing better offense. Trea Turner’s offensive stats were similar to Bryce Harper but was paid nearly 20 times less than Bryce. 
+
+```{r WASAgeSal, include = TRUE, echo = FALSE}
+ggplot(WASsalbatstats18,aes(x=Age,y=sal2018, label = Player))+ geom_text_repel() + geom_point(aes(size=G)) + ylab("Salaries 2018, in Millions") + xlab("Age") + ggtitle("Nationals Age by Salary") + labs(size = "Games Played")
+```
+
+The Nationals have a higher OBP across their player salary range compared to the White Sox because they were a better offensive team. Still, however, the correlation between salary and OBP is R < 0.1. 
+
+```{r WASsalOBP,include = TRUE, echo = FALSE}
+#WAS Salary vs OBP
+ggplot(WASsalbatstats18,aes(x=sal2018,y=OBP)) + geom_point(aes(size=G)) + ylab("On-Base Percentage") + xlab("2018 Salary, in Millions") + ggtitle("Nationals On Base Percentage by Salary") + labs(size = "Games Played")
+```
+
+Like the White Sox, the Nationals players have a strong correlation between batting in runs and scoring runs (R = 0.95). Again, runs scored directly contribute to the teams score and thus increase the odds of winning the game. A player’s RBIs should be taken into consideration by General Manager’s deciding the team roster.
+
+```{r WASsalRBI,include = TRUE, echo = FALSE}
+#WAS Salary vs RBI
+ggplot(WASsalbatstats18,aes(x=sal2018,y=RBI)) + geom_point(aes(size=G)) + ylab("RBI") + xlab("2018 Salary, in Millions") + ggtitle("Nationals RBIs by Salary") + labs(size = "Games Played")
+```
+
+Like the White Sox, the Nationals players have a strong correlation between batting in runs and scoring runs (R = 0.95). Again, runs scored directly contribute to the teams score and thus increase the odds of winning the game. A player’s RBIs should be taken into consideration by General Manager’s deciding the team roster. 
+
+```{r WASRBIRuns,include = TRUE, echo = FALSE}
+#WAS Salary vs Runs
+ggplot(WASsalbatstats18,aes(x=RBI,y=R)) + geom_point(aes(size=G)) + ylab("Runs") + xlab("RBIs") + ggtitle("Nationals RBIs vs. Runs Scored ") + labs(size = "Games Played")
+```
+
+In terms of game winning performances, Anthony Rendon (3B) is paid almost $10 million less than Daniel Murphy (2B) but has 2.5 times the amount of game winning RBIs than Murphy (when averaged out for Game Winning RBIs per Game). Rendon also is 100 points higher than Murphy for OPS (On-base percentage plus slugging). 
+
+```{r WASGameWinningRBIplot, include = TRUE, echo = FALSE}
+#WAS Game Winning RBI plot
+WASWins <- sqldf("select * from WashingtonNationals where ((Visitor = 'WAS' AND VisitorScore > HomeScore) OR (Home = 'WAS' AND HomeScore > VisitorScore))")
+WASGameWinningRBIs <-  sqldf("select GW_RBIBatterName, count(GW_RBIBatterName) from WASWins group by GW_RBIBatterName")
+colnames(WASGameWinningRBIs) <- c("Player","GWRBIs")
+WASGameWinningRBIs <- WASGameWinningRBIs[order(-WASGameWinningRBIs$GWRBIs),]
+ggplot(WASGameWinningRBIs, aes(x=reorder(Player,-GWRBIs), y=GWRBIs))+ geom_text(aes(label=GWRBIs), vjust = -0.5)+ ggtitle("Washington Nationals Game Winning RBI Leaders for 2018") +xlab("Player") + ylab("# of GWRBIs") +geom_col(color = '#AB0003', fill='#14225A')+theme(axis.text.x = element_text(angle = 45,hjust=1))
+```
+
+The Nationals starting rotation exhibit a clear and direct relationship between ERA and Salary for starting pitchers. Nationals pitchers with lower ERA in 2018 also had higher salaries. As with the White Sox pitchers, the ERA remains the gold standard in determining a pitcher’s salary. 
+
+```{r WASpitchERAsal, include=TRUE, echo = FALSE}
+ggplot(WASsalpitchstats18,aes(x=ERA,y=sal2018,label = Player))+ geom_text_repel() + geom_point(aes(size=SV)) + ylab("Salaries 2018, in Millions") + xlab("Earned Run Average") + ggtitle("Nationals Earned Run Average by Salary") + labs(size="Saved Games", color= "Win/Loss Average")
+```
+
+Unlike the Chicago White Sox, the Washington Nationals pitching staff enjoys high run support for most of the starting pitchers. For Washington, Austin Voth (6.57 ERA), Erick Fedde (5.54 ERA), AJ Cole (13.06 ERA), Gio Gonzalez (4.57 ERA), and Joe Ross (5.06 ERA) are the pitchers who draw less run support than their ERAs. The majority of the starting pitchers have far higher run support than needed.  
+
+```{r WASpitcherrunsupportplot, include = TRUE, echo = FALSE}
+#WAS pitcher run support plot
+WASHomeGames <- sqldf("select HomeScore,H_StartingPitcherName from WashingtonNationals where (Home = 'WAS')")
+colnames(WASHomeGames) <- c("Score","Pitcher")
+WASAwayGames <- sqldf("select VisitorScore, V_StartingPitcherName from WashingtonNationals where (Visitor = 'WAS')")
+colnames(WASAwayGames) <- c("Score","Pitcher")
+WASPitcherRunSupport <- rbind.data.frame(WASHomeGames,WASAwayGames)
+WASPitcherRunSupport <- aggregate(WASPitcherRunSupport$Score, list(WASPitcherRunSupport$Pitcher), mean)
+colnames(WASPitcherRunSupport) <- c("Pitcher","AverageRunSupport")
+WASPitcherRunSupport$AverageRunSupport <- round(WASPitcherRunSupport$AverageRunSupport,2)
+ggplot(WASPitcherRunSupport, aes(x=reorder(Pitcher,-AverageRunSupport),y=AverageRunSupport))+geom_text(aes(label=AverageRunSupport),vjust=-0.5) + ggtitle("Average Run Support for Washington Nationals Starting Rotation") + xlab("Player")+ylab("Run Support per Start") + geom_col(color='#AB0003',fill='#14225A')+ theme(axis.text.x = element_text(angle = 45,hjust=1))
+```
+
+## Model 1
+
+Association Rules Mining helped immensely to find trends for winning for each team. Two sets of rules were created for each team: winning games all data and winning batting lineups. For the all data rules, the parameters were set at a support of 15%, confidence of 50%, and a minimum length of 3. For the White Sox, this resulted in 42 rules. Meanwhile, 61 rules were generated for the Nationals.
+The rules generated based on the batting lineups had parameters of support 15%, confidence 90%, and a minimum length of 3. This generated 24 rules for the White Sox and 103 rules for the Nationals.
+
+
+```{r CWSwinArules,include = FALSE, echo = FALSE}
+ChicagoWhiteSoxDF <- ChicagoWhiteSoxClean %>%
+  mutate_all(as.factor)
+
+ChicagoWhiteSoxRules = arules::apriori(ChicagoWhiteSoxDF, 
+            parameter = list(support=.15, confidence=.5,minlen = 3))
+CWSSortedRulesConf <- sort(ChicagoWhiteSoxRules, by="confidence", decreasing=TRUE)
+```
+
+```{r NatswinArules,include = FALSE, echo = FALSE}
+WashingtonNationalsDF <- WashingtonNationalsClean %>%
+  mutate_all(as.factor)
+
+WashingtonNationalsRules = arules::apriori(WashingtonNationalsDF, 
+            parameter = list(support=.15, confidence=.5, minlen=3))
+
+WASSortedRulesConf <- sort(WashingtonNationalsRules, by="confidence", decreasing=TRUE)
+```
+
+```{r CWSLineupWinArules,include = FALSE, echo = FALSE}
+CWSWinningBattingLineupsFACTORED <- CWSWinningBattingLineups %>% mutate_all(as.factor)
+CWSwinRules <- arules::apriori(CWSWinningBattingLineupsFACTORED,parameter = list(support = 0.15,confidence = .9, minlen = 3))
+CWSwinSortedRules <- sort(CWSwinRules, by = "confidence",decreasing = TRUE)
+```
+
+```{r NatsLineupWinArules,include = FALSE, echo = FALSE}
+WASWinningBattingLineupsFACTORED <- WASWinningBattingLineups %>% mutate_all(as.factor)
+WASwinRules <- arules::apriori(WASWinningBattingLineupsFACTORED,parameter = list(support = 0.15,confidence = .9, minlen = 3))
+WASwinSortedRules <- sort(WASwinRules, by = "confidence",decreasing = TRUE)
+```
+
+## Model 2
+
+In order to determine which players were either being overpaid or underpaid by their team, players’ salaries were grouped as low, mid, or high based on the mean salary for batters or pitchers for their team, based on position played. Then using random forest, each player’s salary group was predicted based on comparisons to their batting or pitching stats, as appropriate. 
+
+Holdout testing was used to create as accurate a model as possible. Four folds were used for both team’s batters. Five folds were used for pitchers. These folds resulted in groups of 4 players per holdout. Then a loop was written to create new test and train data frames. Each training group used all of the data in the salary and stats data frames. Once classification was made, each player’s name, original salary range, and new salary range was added to a data frame of results for that team and that position – batters versus pitchers.
+
+```{r CWSclassificationsetup,include = FALSE, echo=FALSE}
+CWSsalbatstats18$salCategory <- ""
+CWSsalpitchstats18$salCategory <- ""
+CWSsalbatstats18$salCategory[CWSsalbatstats18$sal2018 <= 1.999] <- "low"
+CWSsalbatstats18$salCategory[CWSsalbatstats18$sal2018 >= 7.000] <- "high"
+CWSsalbatstats18$salCategory[CWSsalbatstats18$salCategory == ""] <- "mid"
+CWSsalpitchstats18$salCategory[CWSsalpitchstats18$sal2018 <= 1.999] <- "low"
+CWSsalpitchstats18$salCategory[CWSsalpitchstats18$sal2018 >= 7.000] <- "high"
+CWSsalpitchstats18$salCategory[CWSsalpitchstats18$salCategory == ""] <- "mid"
+CWSsalbatstats18reduced <- CWSsalbatstats18[,c(38,2,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,31,32,36)]
+CWSsalpitchstats18reduced <- CWSsalpitchstats18[,c(44,2,10,5,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36)]
+CWSsalbatstats18reduced$salCategory <- as.factor(CWSsalbatstats18reduced$salCategory)
+CWSsalbatstats18reduced$Pos <- as.factor(CWSsalbatstats18reduced$Pos)
+CWSsalpitchstats18reduced$salCategory <- as.factor(CWSsalpitchstats18reduced$salCategory)
+CWSsalpitchstats18reduced$Pos <- as.factor(CWSsalpitchstats18reduced$Pos)
+CWSsalpitchstats18reduced$W.L.[is.na(CWSsalpitchstats18reduced$W.L.)] <- 0
+```
+
+```{r WASclassificationsetup,include=FALSE,echo=FALSE}
+WASsalbatstats18$salCategory <- ""
+WASsalpitchstats18$salCategory <- ""
+WASsalbatstats18$salCategory[WASsalbatstats18$sal2018 <= 3.000] <- "low"
+WASsalbatstats18$salCategory[WASsalbatstats18$sal2018 >= 11.000] <- "high"
+WASsalbatstats18$salCategory[WASsalbatstats18$salCategory == ""] <- "mid"
+WASsalpitchstats18$salCategory[WASsalpitchstats18$sal2018 <= 1.999] <- "low"
+WASsalpitchstats18$salCategory[WASsalpitchstats18$sal2018 >= 7.000] <- "high"
+WASsalpitchstats18$salCategory[WASsalpitchstats18$salCategory == ""] <- "mid"
+WASsalbatstats18reduced <- WASsalbatstats18[,c(38,2,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,31,32,36)]
+WASsalpitchstats18reduced <- WASsalpitchstats18[,c(44,2,10,5,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36)]
+WASsalbatstats18reduced$salCategory <- as.factor(WASsalbatstats18reduced$salCategory)
+WASsalbatstats18reduced$Pos <- as.factor(WASsalbatstats18reduced$Pos)
+WASsalpitchstats18reduced$salCategory <- as.factor(WASsalpitchstats18reduced$salCategory)
+WASsalpitchstats18reduced$Pos <- as.factor(WASsalpitchstats18reduced$Pos)
+WASsalpitchstats18reduced$W.L.[is.na(WASsalpitchstats18reduced$W.L.)] <- 0
+```
+
+```{r CWSbattersRF,include=FALSE,echo=FALSE}
+N <- nrow(CWSsalbatstats18reduced)
+kfolds <- 4
+holdout <- split(sample(1:N),1:kfolds)
+AllResultsRFcwsbatters <- data.frame(Player2=c(),orig = c(),pred = c())
+for (k in 1:kfolds){
+  new_test <- CWSsalbatstats18reduced[holdout[[k]],]
+  new_test <- na.omit(new_test)
+  new_train <-CWSsalbatstats18reduced[-holdout[[k]],]
+  new_test_no_label <- new_test[-c(1)]
+  new_test_just_label <- new_test[c(1)]
+  test_model <- randomForest(salCategory ~ ., new_train[,-2],na.action=na.pass)
+  RFpredcwsbatters <- predict(test_model, new_test_no_label[,-1],type = c("class"))
+  AllResultsRFcwsbatters <- rbind(AllResultsRFcwsbatters,data.frame(Player2 = new_test_no_label$Player2,orig = new_test_just_label$salCategory,pred=RFpredcwsbatters))
+}
+```
+
+```{r CWSpitchersRF,include=FALSE,echo=FALSE}
+N <- nrow(CWSsalpitchstats18reduced)
+kfolds <- 5
+holdout <- split(sample(1:N),1:kfolds)
+AllResultsRFcwspitchers <- data.frame(Player2=c(),orig = c(),pred = c())
+for (k in 1:kfolds){
+  new_testpitch <- CWSsalpitchstats18reduced[holdout[[k]],]
+  new_testpitch <- na.omit(new_testpitch)
+  new_trainpitch <-CWSsalpitchstats18reduced[-holdout[[k]],]
+  new_test_no_labelpitch <- new_testpitch[-c(1)]
+  new_test_just_labelpitch <- new_testpitch[c(1)]
+  test_modelpitch <- randomForest(salCategory ~ ., new_trainpitch[,-2],na.action=na.pass)
+  RFpredcwspitchers <- predict(test_modelpitch, new_test_no_labelpitch[,-1],type = c("class"))
+  AllResultsRFcwspitchers <- rbind(AllResultsRFcwspitchers,data.frame(Player2 = new_test_no_labelpitch$Player2,orig = new_test_just_labelpitch$salCategory,pred=RFpredcwspitchers))
+}
+```
+
+```{r WASbattersRF,include=FALSE,echo=FALSE}
+N <- nrow(WASsalbatstats18reduced)
+kfolds <- 4
+holdout <- split(sample(1:N),1:kfolds)
+AllResultsRFwasbatters <- data.frame(Player2=c(),orig = c(),pred = c())
+for (k in 1:kfolds){
+  new_test <- WASsalbatstats18reduced[holdout[[k]],]
+  new_test <- na.omit(new_test)
+  new_train <-WASsalbatstats18reduced[-holdout[[k]],]
+  new_test_no_label <- new_test[-c(1)]
+  new_test_just_label <- new_test[c(1)]
+  test_model <- randomForest(salCategory ~ ., new_train[,-2],na.action=na.pass)
+  RFpredwasbatters <- predict(test_model, new_test_no_label[,-1],type = c("class"))
+  AllResultsRFwasbatters <- rbind(AllResultsRFwasbatters,data.frame(Player2 = new_test_no_label$Player2,orig = new_test_just_label$salCategory,pred=RFpredwasbatters))
+}
+```
+
+```{r WASpitchersRF,include=FALSE,echo=FALSE}
+N <- nrow(WASsalpitchstats18reduced)
+kfolds <- 5
+holdout <- split(sample(1:N),1:kfolds)
+AllResultsRFwaspitchers <- data.frame(Player2=c(),orig = c(),pred = c())
+for (k in 1:kfolds){
+  new_testpitch <- WASsalpitchstats18reduced[holdout[[k]],]
+  new_testpitch <- na.omit(new_testpitch)
+  new_trainpitch <-WASsalpitchstats18reduced[-holdout[[k]],]
+  new_test_no_labelpitch <- new_testpitch[-c(1)]
+  new_test_just_labelpitch <- new_testpitch[c(1)]
+  test_modelpitch <- randomForest(salCategory ~ ., new_trainpitch[,-2],na.action=na.pass)
+  RFpredwaspitchers <- predict(test_modelpitch, new_test_no_labelpitch[,-1],type = c("class"))
+  AllResultsRFwaspitchers <- rbind(AllResultsRFwaspitchers,data.frame(Player2 = new_test_no_labelpitch$Player2,orig = new_test_just_labelpitch$salCategory,pred=RFpredwaspitchers))
+}
+```
+
+## Model 3
+In order to optimize k value, the elbow method, looped through k values 1 to 10 which returns a rather interesting plot. The elbow where the Sum of Squared errors can be interpreted as any k value between k = 2 or k = 6, based on the shape of the plot. 
+
+```{r CWSClustering, include = TRUE, echo = FALSE}
+#Clustering for CWS
+ChicagoWhiteSox2018Batting # CWS batting stats for 2018
+set.seed(20)
+#create batting data frame for clustering
+CWSclusteringDF <- filter(CWSsalbatstats18,!(Position %in% c('rhp-s','lhp-s','rhp','lhp')))
+#stepFlexclust(CWSclusteringDF[,-c(1:8,10:12,37)],k=2:11,nrep=20)
+# K= 4
+cws_four_clusters <- kmeans(CWSclusteringDF[,-c(1:8,10:12,21,37,38)],4, iter.max = 100)
+CWS_Batting_4_Clusters <- data.frame(CWSclusteringDF,cws_four_clusters$cluster)
+ggplot(CWS_Batting_4_Clusters, aes(x=sal2018,y=TB))+geom_point(aes(size=Age,color=factor(cws_four_clusters.cluster))) + geom_text_repel(aes(label=paste(Player,",",Pos))) + scale_color_manual(name = "Cluster",values=c("black","gray53","navy blue","red")) + xlab("2018 Player Salary, in $Mil") + ylab("Total Bases (TB)") +ggtitle("TB vs. Chicago White Sox Player Salary, Clustered by K-Means") + labs(size="Age")
+ggplot(CWS_Batting_4_Clusters, aes(x=sal2018,y=H))+geom_point(aes(size=Age,color=factor(cws_four_clusters.cluster))) + geom_text_repel(aes(label=paste(Player,",",Pos))) + scale_color_manual(name = "Cluster",values=c("black","gray53","navy blue","red")) + xlab("2018 Player Salary, in $Mil") + ylab("Hits (H)") +ggtitle("Hits vs. Chicago White Sox Player Salary, Clustered by K-Means") + labs(size="Age")
+#summarize the clusters
+CWS_cluster_summary <- CWS_Batting_4_Clusters[,c("sal2018",
+                                             "Age",
+                                             "BA",
+                                             "R",
+                                             "H",
+                                             "HR",
+                                             "RBI",
+                                             "OPS",
+                                             "cws_four_clusters.cluster")] %>% group_by(cws_four_clusters.cluster) %>% summarize_all(funs(mean),na.rm = TRUE)
+CWS_cluster_summary_2 <- gather(CWS_cluster_summary,-cws_four_clusters.cluster, key = HittingCategory, value = Value)
+CWS_overall_means <- CWSclusteringDF[,c("sal2018",
+                                        "Age",
+                                        "BA",
+                                        "R",
+                                        "H",
+                                        "HR",
+                                        "RBI",
+                                        "OPS")] %>% summarize_all(funs(mean))
+CWS_overall_means <- gather(CWS_overall_means,key = HittingCategory,value=Overall_Mean)
+CWS_cluster_comparison <- left_join(CWS_cluster_summary_2,CWS_overall_means,by="HittingCategory")
+CWS_cluster_comparison <- CWS_cluster_comparison %>% group_by(HittingCategory) %>% mutate(varmeans=(Value/Overall_Mean))
+
+```
+
+Using K-means clustering, we can group the players with similar performance together, and use the clusters to compare players. Using the elbow method, we can observe where the Within-Cluster Sum of Squares first starts to diminish, forming an “elbow” in the plot of k vs. WCSoS. From this, we see that the optimal k value is 3. When given business context, this can be construed to make sense. There are three categories of positions players: Outfielders, Infielders, and Catchers.
+
+```{r WASClustering, include=TRUE, echo = FALSE}
+#clustering players
+WashingtonNationals2018Batting # WAS batting stats for 2018
+set.seed(20)
+WASclusteringDF <- filter(WASsalbatstats18,!(Position %in% c('rhp-s','lhp-s','rhp','lhp')))
+
+k_vs_squares <- data.frame(K = c(1:10),Sum_Of_Squares = 0)
+k_vs_squares$K <- as.integer(k_vs_squares$K)
+
+#Loop through k's and plot sum of squares vs k
+for (k in c(1:10)) {
+  clusters <- kmeans(WASclusteringDF[,-c(1:8,10:12,37,38)],k, iter.max = 100)
+  
+  k_vs_squares$Sum_Of_Squares[k_vs_squares$K == k] <- clusters$tot.withinss
+}
+
+#plot k vs within cluster sum of squares
+ggplot(k_vs_squares,aes(x = K, y = Sum_Of_Squares))+ geom_line() +scale_x_continuous(breaks=seq(0,11,1))  + xlab("k Value") + ylab("Within Cluster Sum of Squares") + ggtitle("Resulting Within Cluster Squared Errors for 10 k Values")
+
+# Kmeans with optimal K = 3
+three_clusters <- kmeans(WASclusteringDF[,-c(1:8,10:12,37,38)],3, iter.max = 100)
+WAS_Batting_3_Clusters <- data.frame(WASclusteringDF,three_clusters$cluster)
+
+three_clusters$tot.withinss
+three_clusters$centers
+
+
+# K= 4
+four_clusters <- kmeans(WASclusteringDF[,-c(1:8,10:12,37,38)],4, iter.max = 100)
+WAS_Batting_4_Clusters <- data.frame(WASclusteringDF,four_clusters$cluster)
+ggplot(WAS_Batting_4_Clusters, aes(x=R,y=RBI))+geom_point(aes(size=Age,color=factor(four_clusters.cluster))) + geom_text_repel(aes(label=paste(Player,",",Pos))) + scale_color_manual(name = "Cluster",values=c("red","navy blue","lightskyblue","snow3")) + xlab("R") + ylab("RBIs") +ggtitle("Washington Nationals Player Runs vs. RBI, Clustered by K-Means") + labs(size="Age")
+four_clusters$tot.withinss
+four_clusters$centers
+
+# K=5 --> too much separation, overfitting 
+five_clusters <- kmeans(WASclusteringDF[,-c(1:8,10:12,37,38)],5, iter.max = 100 )
+WAS_Batting_5_Clusters <- data.frame(WASclusteringDF,five_clusters$cluster)
+
+five_clusters$tot.withinss
+
+
+#summarize the clusters for k = 3
+cluster_summary <- WAS_Batting_3_Clusters[,c("sal2018",
+                          "Age",
+                          "BA",
+                          "R",
+                          "H",
+                          "HR",
+                          "RBI",
+                          "OPS",
+                          "three_clusters.cluster")] %>% group_by(three_clusters.cluster) %>% summarize_all(funs(mean),na.rm = TRUE)
+cluster_summary_2 <- gather(cluster_summary,-three_clusters.cluster, key = HittingCategory, value = Value)
+
+WAS_overall_means <- WASclusteringDF[,c("sal2018",
+                                        "Age",
+                                        "BA",
+                                        "R",
+                                        "H",
+                                        "HR",
+                                        "RBI",
+                                        "OPS")] %>% summarize_all(funs(mean))
+WAS_overall_means <- gather(WAS_overall_means,key = HittingCategory,value=Overall_Mean)
+
+cluster_comparison <- left_join(cluster_summary_2,WAS_overall_means,by="HittingCategory")
+
+cluster_comparison <- cluster_comparison %>% group_by(HittingCategory) %>% mutate(varmeans=(Value/Overall_Mean))
+
+```
+
+## Model 4
+kMeans clustering provided a method for unsupervised pattern recognition within the White Sox and Nationals datasets. There are also supervised learning methods that utilize the same basic principles of determining similarity between data points based on distance between all vectors of the examples. One such method is kNN, which is an abbreviation for k-Nearest Neighbors. The term “k” acts in kNN similar to the “k” in kMeans, where it can be arbitrarily decided by the model user. In kNN, k represents the number of neighbors, or closest data points, to a test record example that will be used to calculate the majority classification voting that will determine the predicted class. If k is small, then the model is very sensitive to noise, and if k is large, then the neighborhood is too large and the estimated class will be generalized. A unique feature of kNN modeling is there is no standard training and testing split. The algorithm function takes both a training and testing input simultaneously, and the user denotes the training data set’s classification labels.
+
+To run kNN modeling, all players needed to be classified based on their salary in three distinct groups. Players with salaries under 3 million in 2018 were labeled as “low”, players with salaries over $11 million in 2018 were labelled as “high”, and the rest were labeled as “mid”. The goal in this analysis is to find the number k that provides the best accuracy in the kNN model, when attempting to label players salaries based on their performance. 
+
+The Nationals and White Sox player data sets were relatively small. To create more data, sampling with replacement was done to fabricate more data that was identical to the original data set. This method of sampling simulated a player being compared to different teammates in different sampling cycles, so it strained the model to provide consistent accuracy feedback.
+
+The process for running kNN with the player datasets was an iterative one. After identifying the optimal k value for batters and pitchers data sets, 3-fold cross validation was repeated and the accuracy score was calculated for each iteration. 
+
+```{r CWSbatKNN, include = TRUE, echo = FALSE}
+###############
+# knn - White Sox
+##############
+#Batters
+# Use CWSsalbatstats18reduced
+#Number of samples = 19
+nrow(CWSsalbatstats18reduced)
+#convert all columns to numeric
+#remove non stat columns
+CWSsalbatstats18reduced2 <- CWSsalbatstats18reduced[,c(1,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21)]
+#Test accuracy for single fold validation. Using a single train/test split to find optimal k Value
+# if no clear best choice, then use sqrt(nrow(dataset))
+
+k_folds <- 3
+holdout <- split(sample(1:nrow(CWSsalbatstats18reduced2)),1:k_folds)
+
+CWSaccuracy_values <- c()
+
+#loop through kfolds in 3 fold cross validation. Manually change k in knn function from 1 to 5
+for (k in 1:k_folds) {
+  test <- sample_n(CWSsalbatstats18reduced2[holdout[[k]],],1000, replace = TRUE)
+  test_labels <- test[,1, drop = TRUE]
+  #test <- sample_n(CWSsalbatstats18reduced[holdout[[k]],-c(1)],4)
+  test <- test[,-c(1)]
+  test <- na.omit(test)
+  
+  train <- sample_n(CWSsalbatstats18reduced2[-holdout[[k]],],5000, replace = TRUE)
+  train <- na.omit(train)
+  classification_labels <- train$salCategory
+  train <- train[,-c(1)]
+  
+  kNNmodel <- knn(train = train, test = test, cl = classification_labels, k = 5)
+  
+  #output <- data.frame(Predictions = kNNmodel, Actual = test_labels)
+  #print(output)
+  #create predictions
+  accuracy_table <- table(Predicted = kNNmodel, Actual = test_labels)
+  
+  #generate accuracy score
+  accuracy <- sum(diag(accuracy_table)) / sum(accuracy_table)
+  
+  #append to accuracy_values
+  CWSaccuracy_values <- append(CWSaccuracy_values,accuracy)
+  
+  #print out accuracy score
+  print(paste("K-Fold Iteration: ", k, "    Accuracy: ", accuracy))
+  
+}
+```
+
+```{r CWSpitchKNN, include = TRUE, echo = FALSE}
+#Pitchers
+# Use CWSsalpitchstats18reduced
+#Number of samples = 19
+nrow(CWSsalpitchstats18reduced)
+#convert all columns to numeric
+#remove non stat columns
+CWSsalpitchstats18reduced2 <- CWSsalpitchstats18reduced[,c(1,5:23)]
+#Test accuracy for single fold validation. Using a single train/test split to find optimal k Value
+# if no clear best choice, then use sqrt(nrow(dataset))
+
+k_folds <- 3
+holdout <- split(sample(1:nrow(CWSsalpitchstats18reduced2)),1:k_folds)
+
+CWSaccuracy_valuespitch <- c()
+
+#loop through kfolds in 3 fold cross validation. Manually change k in knn function from 1 to 5
+for (k in 1:k_folds) {
+  test <- sample_n(CWSsalpitchstats18reduced2[holdout[[k]],],1000, replace = TRUE)
+  test_labels <- test[,1, drop = TRUE]
+  #test <- sample_n(CWSsalpitchstats18reduced[holdout[[k]],-c(1)],4)
+  test <- test[,-c(1)]
+  test <- na.omit(test)
+  
+  train <- sample_n(CWSsalpitchstats18reduced2[-holdout[[k]],],5000, replace = TRUE)
+  train <- na.omit(train)
+  classification_labels <- train$salCategory
+  train <- train[,-c(1)]
+  
+  kNNmodel <- knn(train = train, test = test, cl = classification_labels, k = 3)
+  
+  #output <- data.frame(Predictions = kNNmodel, Actual = test_labels)
+  #print(output)
+  #create predictions
+  accuracy_table <- table(Predicted = kNNmodel, Actual = test_labels)
+  
+  #generate accuracy score
+  accuracy <- sum(diag(accuracy_table)) / sum(accuracy_table)
+  
+  #append to accuracy_values
+  CWSaccuracy_valuespitch <- append(CWSaccuracy_valuespitch,accuracy)
+  
+  #print out accuracy score
+  print(paste("K-Fold Iteration: ", k, "    Accuracy: ", accuracy))
+  
+}
+```
+
+The Washington Nationals batter’s dataset was used to determine the optimal k value for batters. Using 3-fold cross validation to collect accuracy scores, k values were iterated from 1 to 5, and the accuracies plotted below. K was set to 5 for model testing as the accuracy plateaued for values larger than 5.
+
+
+```{r WASbatKNN, include = TRUE, echo = FALSE}
+###############
+#knn - Washington
+###############
+#Batters
+# Use WASsalbatstats18reduced
+#Number of samples = 19
+nrow(WASsalbatstats18reduced)
+#convert all columns to numeric
+WASsalbatstats18reduced$Rk <- as.numeric(WASsalbatstats18reduced$Rk)
+WASsalbatstats18reduced$G <- as.numeric(WASsalbatstats18reduced$G)
+WASsalbatstats18reduced$PA<- as.numeric(WASsalbatstats18reduced$PA)
+WASsalbatstats18reduced$AB <- as.numeric(WASsalbatstats18reduced$AB)
+WASsalbatstats18reduced$R <- as.numeric(WASsalbatstats18reduced$R)
+WASsalbatstats18reduced$H <- as.numeric(WASsalbatstats18reduced$H)
+WASsalbatstats18reduced$X2B <- as.numeric(WASsalbatstats18reduced$X2B)
+WASsalbatstats18reduced$X3B <- as.numeric(WASsalbatstats18reduced$X3B)
+WASsalbatstats18reduced$HR <- as.numeric(WASsalbatstats18reduced$HR)
+WASsalbatstats18reduced$RBI <- as.numeric(WASsalbatstats18reduced$RBI)
+WASsalbatstats18reduced$SB <- as.numeric(WASsalbatstats18reduced$SB)
+WASsalbatstats18reduced$CS <- as.numeric(WASsalbatstats18reduced$CS)
+WASsalbatstats18reduced$BB <- as.numeric(WASsalbatstats18reduced$BB)
+WASsalbatstats18reduced$SO <- as.numeric(WASsalbatstats18reduced$SO)
+WASsalbatstats18reduced$TB <- as.numeric(WASsalbatstats18reduced$TB)
+WASsalbatstats18reduced$GDP <- as.numeric(WASsalbatstats18reduced$GDP)
+WASsalbatstats18reduced$IBB <- as.numeric(WASsalbatstats18reduced$IBB)
+#remove non stat columns
+WASsalbatstats18reduced2 <- WASsalbatstats18reduced[,c(1,5:24)]
+#Test accuracy for single fold validation. Using a single train/test split to find optimal k Value
+# if no clear best choice, then use sqrt(nrow(dataset))
+
+k_folds <- 3
+holdout <- split(sample(1:nrow(WASsalbatstats18reduced2)),1:k_folds)
+
+accuracy_values <- c()
+
+#loop through kfolds in 3 fold cross validation. Manually change k in knn function from 1 to 5
+for (k in 1:k_folds) {
+  test <- sample_n(WASsalbatstats18reduced2[holdout[[k]],],1000, replace = TRUE)
+  test_labels <- test[,1, drop = TRUE]
+  #test <- sample_n(WASsalbatstats18reduced[holdout[[k]],-c(1)],4)
+  test <- test[,-c(1)]
+  test <- na.omit(test)
+  
+  train <- sample_n(WASsalbatstats18reduced2[-holdout[[k]],],5000, replace = TRUE)
+  train <- na.omit(train)
+  classification_labels <- train$salCategory
+  train <- train[,-c(1)]
+  
+  kNNmodel <- knn(train = train, test = test, cl = classification_labels, k = 5)
+  
+  #output <- data.frame(Predictions = kNNmodel, Actual = test_labels)
+  #print(output)
+  #create predictions
+  accuracy_table <- table(Predicted = kNNmodel, Actual = test_labels)
+  
+  #generate accuracy score
+  accuracy <- sum(diag(accuracy_table)) / sum(accuracy_table)
+  
+  #append to accuracy_values
+  accuracy_values <- append(accuracy_values,accuracy)
+  
+  #print out accuracy score
+  print(paste("K-Fold Iteration: ", k, "    Accuracy: ", accuracy))
+  
+}
+```
+
+```{r WASpitchKNN,include = TRUE, echo = FALSE}
+#Pitchers
+# Use WASsalpitchstats18reduced
+#Number of samples = 19
+nrow(WASsalpitchstats18reduced)
+#convert all columns to numeric
+#remove non stat columns
+WASsalpitchstats18reduced2 <- WASsalpitchstats18reduced[,c(1,5:23)]
+#Test accuracy for single fold validation. Using a single train/test split to find optimal k Value
+# if no clear best choice, then use sqrt(nrow(dataset))
+
+k_folds <- 3
+holdout <- split(sample(1:nrow(WASsalpitchstats18reduced2)),1:k_folds)
+
+accuracy_valuespitch <- c()
+
+#loop through kfolds in 3 fold cross validation. Manually change k in knn function from 1 to 5
+for (k in 1:k_folds) {
+  test <- sample_n(WASsalpitchstats18reduced2[holdout[[k]],],1000, replace = TRUE)
+  test_labels <- test[,1, drop = TRUE]
+  #test <- sample_n(WASsalbatstats18reduced[holdout[[k]],-c(1)],4)
+  test <- test[,-c(1)]
+  test <- na.omit(test)
+  
+  train <- sample_n(WASsalpitchstats18reduced2[-holdout[[k]],],5000, replace = TRUE)
+  train <- na.omit(train)
+  classification_labels <- train$salCategory
+  train <- train[,-c(1)]
+  
+  kNNmodel <- knn(train = train, test = test, cl = classification_labels, k = 3)
+  
+  #output <- data.frame(Predictions = kNNmodel, Actual = test_labels)
+  #print(output)
+  #create predictions
+  accuracy_table <- table(Predicted = kNNmodel, Actual = test_labels)
+  
+  #generate accuracy score
+  accuracy <- sum(diag(accuracy_table)) / sum(accuracy_table)
+  
+  #append to accuracy_values
+  accuracy_valuespitch <- append(accuracy_valuespitch,accuracy)
+  
+  #print out accuracy score
+  print(paste("K-Fold Iteration: ", k, "    Accuracy: ", accuracy))
+  
+}
+```
+
+# Results
+## Model 1
+
+A couple of the more interesting rules generated for the White Sox is if they're playing at night, and the opponents don't hit any home runs (or have any stolen bases), they are more likely to win, as well as if they're playing a home game and don't hit any home runs themselves, they're more likely to lose. This gives insight as to how schedule factors into overall performance, as well as how important defense is. But those rules don't give any insight to player performance, so we generated rules based on the winning batting lineup of each game.
+
+```{r CWSwinARMresults, include = TRUE, echo = FALSE}
+inspect(head(CWSSortedRulesConf))
+inspect(CWSSortedRulesConf)
+plot (CWSSortedRulesConf,method="graph",shading="confidence")
+``` 
+
+Those results were mostly centered around Jose Abreu being third in the lineup, but Adam Engel being ninth in the lineup, as well as Yoan Moncada being leadoff, and Yolmer Sanchez being second seem to be the only other consistencies withing the winning batting lineups. The more variable ones (the ones that didn't have any rules generated about them), the players can be assessed to determine if their performance for the season merits them remaining on the team.
+
+```{r CWSLineupsARMresults, include = TRUE, echo = FALSE}
+inspect(head(CWSwinSortedRules,20))
+plot(CWSwinSortedRules, method = "graph", shading = "lift")
+```
+
+For the Nationals, perhaps the most interesting rule is that if they don't hit any HR's and have no stolen bases, they're 1.58 times more likely to lose. Looking at their 2018 record being mostly wins and the support of this being 15% (good for the amount of data), this indicates that they're mostly an offensive team, and that players with lower overall performance should be assessed for a spot on the team next season. 
+
+```{r WASwinARMresults, include = TRUE, echo = FALSE}
+inspect(head(WASSortedRulesConf))
+inspect(WASSortedRulesConf)
+plot (WASSortedRulesConf,method="graph",shading="confidence")
+```
+
+Trea Turner was in 12 of the top 20 rules for the winning batting lineups at either first or second in the lineup, indicating that a strong leadoff is necessary for a win. Juan Soto made a difference when they brought him up from the minors, with 8 of the top 20 rules having him batting at fifth. Like with the White Sox, the remaining players' performance should be assessed for a remaining spot on the team.
+
+```{r WASLineupsARMresults, include = TRUE, echo = FALSE}
+inspect(head(WASwinSortedRules,20))
+plot(WASwinSortedRules, method = "graph", shading = "lift")
+```
+
+## Model 2
+
+Each team and each position results, batters versus pitchers, were added to a confusion matrix. For the Chicago White Sox batters, all three high salary players were classified as low salaried. One low salaried player was ranked as high salaried while three were classified as mid salaried. The remaining six were correctly classified. All three mid salaried players were ranked as low salaried. At 37.5% accurate, this model is not accurate as many low paid players play as well or better than the higher paid players.
+
+```{r CWSresultsRFbatters,include=TRUE,echo=FALSE}
+get_accuracy_rate <- function(results_table,total_cases){
+  diagonal_sum <- sum(c(results_table[[1]],results_table[[5]], results_table[[9]]))
+  (diagonal_sum/total_cases)*100
+}
+print("Chicago White Sox Batter Salary Prediction Accuracy")
+tabRFcwsbatters <- table(AllResultsRFcwsbatters$orig,AllResultsRFcwsbatters$pred)
+tabRFcwsbatters
+CWSaccuracyBatters <- get_accuracy_rate(tabRFcwsbatters,length(AllResultsRFcwsbatters$pred))
+CWSaccuracyBatters
+majrlsCWSbatters <- (length(AllResultsRFcwsbatters$orig[AllResultsRFcwsbatters$orig=="low"])/length(AllResultsRFcwsbatters$orig))*100
+```
+
+For the Chicago White Sox pitchers, both high salary players were classified as low salaried. Two low salaried players were ranked as mid salaried while the remaining six were correctly classified. One mid salaried pitcher was correctly classified and the other four were classified as low salaried. At 46.67% accurate, this model is not accurate either. A case can be made that the White Sox were undervaluing several players and overvaluing others. 
+
+```{r CWSresultsRFpitchers,include=TRUE,echo=FALSE}
+print("Chicago White Sox Pitcher Salary Prediction Accuracy")
+tabRFcwspitchers <- table(AllResultsRFcwspitchers$orig,AllResultsRFcwspitchers$pred)
+tabRFcwspitchers
+CWSaccuracyPitchers <- get_accuracy_rate(tabRFcwspitchers,length(AllResultsRFcwspitchers$pred))
+CWSaccuracyPitchers
+majrlsCWSpitchers <- (length(AllResultsRFcwspitchers$orig[AllResultsRFcwspitchers$orig=="low"])/length(AllResultsRFcwspitchers$orig))*100
+```
+
+The Washington Nationals batters have a more mixed prediction with lower accuracy at just 21.05%. For the Nationals, there is a better mix between low, mid, and high salaried players where the White Sox, for the most part, either paid their players close to the league minimum, 545,000, or a very high salary, 7 million or more. Only four players were accurately predicted for salary, 2 high and 2 low. Three high paid players were ranked as low while two were raked as mid. Of the misclassified low paid players, two were ranked as high and three were ranked as mid. The mid salaried players were mostly classified as high with one classified as low.
+
+```{r WASresultsRFbatters,include=TRUE,echo=FALSE}
+print("Washington Nationals Batter Salary Prediction Accuracy")
+tabRFwasbatters <- table(AllResultsRFwasbatters$orig,AllResultsRFwasbatters$pred)
+tabRFwasbatters
+WASaccuracyBatters <- get_accuracy_rate(tabRFwasbatters,length(AllResultsRFwasbatters$pred))
+WASaccuracyBatters
+majrlsWASbatters <- (length(AllResultsRFwasbatters$orig[AllResultsRFwasbatters$orig=="low"])/length(AllResultsRFwasbatters$orig))*100
+```
+
+The best prediction accuracy was the pitching staff of the Washington Nationals at 53.33%. Two of the four high paid pitchers were misclassified as mid salary while the other two were accurately predicted. Two of the seven low salaried pitchers were misclassified as mid salary. The other five low salaried pitchers were accurately predicted. For the mid salary group, two of four were classified as low. Of the remaining two pitchers, one was correctly classified as mid-range.  Unlike the White Sox, the Nationals are not overwhelmingly under- or over-valuing their pitching staff. However, for batters it appears that the Nationals are consistent in mis-valuing their players.
+
+```{r WASresultsRFpitchers,include=TRUE,echo=FALSE}
+print("Washington Nationals Pitcher Salary Prediction Accuracy")
+tabRFwaspitchers <- table(AllResultsRFwaspitchers$orig,AllResultsRFwaspitchers$pred)
+tabRFwaspitchers
+WASaccuracyPitchers <- get_accuracy_rate(tabRFwaspitchers,length(AllResultsRFwaspitchers$pred))
+WASaccuracyPitchers
+majrlsWASpitchers <- (length(AllResultsRFwaspitchers$orig[AllResultsRFwaspitchers$orig=="low"])/length(AllResultsRFwaspitchers$orig))*100
+```
+
+## Model 3
+
+When k = 2, the clusters are split based where cluster 1 has scored greater than 45 runs, and cluster 2 has scored less than 45 runs. There is slight overlap with 3 players (Adam Engel, Leury Garcia, Omar Narvaez) in terms of separating them into clusters based on RBIs. Overall, cluster two offensively performs better than cluster 1.
+
+K=4 provides a more detailed breakdown of the runs scored by the White Sox players, where the players can be visually grouped into 4 offensive tiers: High Performing Tier, Upper Middle Performing Tier, Lower Middle Performing Tier, Lower Performing Tier. 
+
+K=6 follows upon the 4-means clustering above and further separates players based on offensive performance. Tim Anderson and Yoan Moncada form the new cluster 5, while Avisail Garcia and Adam Engel form the new cluster 6. Matt Davidson remain. With 6 centroids, Matt Davidson and Jose Abreu form the first cluster, whereas in earlier k-means models (k=4) Matt Davidson was not with Jose Abreu. Both Matt Davidson and Jose Abreu had higher OPS and OBP compared to Tim Anderson and Yoan Moncada.
+
+K=4 did not have the smallest sum of squared errors (as shown in the elbow plot) but showed the best separation between high performing and low performing White Sox players. It also provided the best business context sense that is easy to interpret.
+
+```{r CWSClusteringResults, include = TRUE, echo=FALSE}
+ggplot(CWS_cluster_comparison,aes(y=Value,x=HittingCategory))+facet_wrap(~cws_four_clusters.cluster) + geom_bar(aes(fill=Value),stat="identity")+scale_fill_gradient(low="#27251F",high = "#C4CED4")+geom_point(aes(y=Overall_Mean,x=HittingCategory))+coord_flip()+ggtitle("Cluster Comparison for the Chicago White Sox")+ xlab("Offensive Stats") + theme(legend.position = "none")
+CWS_Batting_4_Clusters[order(-CWS_Batting_4_Clusters$sal2018),]
+```
+
+K=3 is given as the optimal k value via the Elbow Method, and clear separation between clusters is seen when viewing RBIs against Runs. The three players with the most RBIs, Turner, Rendon, and Harper, are all members of the 2nd cluster, while the 3rd cluster contains the players with the least RBIs.
+
+```{r WASClustering3results, include=TRUE, echo = FALSE}
+ggplot(WAS_Batting_3_Clusters, aes(x=R,y=RBI))+geom_point(aes(size=Age,color=factor(three_clusters.cluster))) + geom_text_repel(aes(label=paste(Player,",",Pos))) + scale_color_manual(name = "Cluster",values=c("red","navy blue","lightskyblue","snow3")) + xlab("Runs") + ylab("RBIs") +ggtitle("Washington Nationals Player Runs vs. RBI, Clustered by K-Means") + labs(size="Age")
+```
+
+When the kmeans algorithm uses 4 clusters, Wilmer Difo is separated from cluster 1 and forms his own new cluster. However, he still has similar Runs and RBIs to Matt Adams and Adam Eaton, who are in cluster two. At this k value, we can begin to see the individual examples become their own clusters, as k approaches the number of samples.
+
+```{r WASClustering4Results, include = TRUE, echo = FALSE}
+ggplot(WAS_Batting_4_Clusters, aes(x=sal2018,y=OPS))+geom_point(aes(size=Age,color=factor(four_clusters.cluster))) + geom_text_repel(aes(label=paste(Player,",",Pos))) + scale_color_manual(name = "Cluster",values=c("red","navy blue","lightskyblue","snow3")) + xlab("2018 Player Salary, in $Mil") + ylab("On Base plus Slugging (OPS)") +ggtitle("Washington Nationals Player Salary vs. OPS, Clustered by K-Means") + labs(size="Age")
+```
+
+With 5 clusters, Wilmer Difo is still isolated in a separate cluster, and Daniel Murphy and Howie Kendrick both leave cluster 3 to form their own. Brian Goodwin also forms a solitary cluster as well. The k-means algorithm continues to create single unit clusters as k approaches the number of samples. 
+
+```{r WASClustering5Results, include = TRUE, echo = FALSE}
+ggplot(WAS_Batting_5_Clusters, aes(x=R,y=RBI))+geom_point(aes(size=Age,color=factor(five_clusters.cluster))) + geom_text_repel(aes(label=paste(Player,",",Pos))) + scale_color_manual(name = "Cluster",values=c("red","navy blue", "lightskyblue","snow3","black")) + ylab("RBI")+xlab("Runs")+ ggtitle("Washington Nationals Runs vs. RBI, Clustered by K-Means") + labs(size="Age")
+```
+
+K = 3 provided the best delineation between players, although 4 and 5 had lower Within cluster sum of squared errors. As k approaches n, the number of samples in the dataset, individual players will begin forming solitary clusters. Ultimately, when k = n, each player will have his own cluster. This type of clustering is analogous to overfitting in other predictive models.
+
+```{r WASClustComp, include = TRUE, echo = FALSE}
+ggplot(cluster_comparison,aes(y=Value,x=HittingCategory))+facet_wrap(~three_clusters.cluster) + geom_bar(aes(fill=Value),stat="identity")+scale_fill_gradient(low="#14225A",high = "#AB0003")+geom_point(aes(y=Overall_Mean,x=HittingCategory))+coord_flip()+ggtitle("Cluster Comparison for the Washington Nationals")+ xlab("Offensive Stats") + theme(legend.position = "none")
+WAS_Batting_3_Clusters[order(-WAS_Batting_3_Clusters$sal2018),]
+```
+
+The second Cluster was the highest performing for all offensive categories. The greatest difference is observed in the sum total stats, rather than the calculated stats. (i.e., Hits and Runs rather than OPS and BA). This suggest that a general manager should aim to use the pure stats to review player performance and make comparisons rather than the calculated stats (assuming equal number of games played).
+
+## Model 4
+
+True accuracy scores were measured to test model validity. True accuracy is represented as:  (Count(Total Correct Predictions))/(Count(All Predictions))
+
+The 3-fold CV resulted in an average accuracy of 36.1% for the Chicago White Sox batters. For their pitchers, the 3-fold CV resulted in an average accuracy of 46.7%.
+
+```{r CWSknn, include = TRUE, echo = FALSE}
+#average accuracy values for above iteration
+print(paste("Average Accuracy: ", mean(CWSaccuracy_values)))
+
+#plot acuracies for each  kfold cross validation
+ggplot(as.data.frame(CWSaccuracy_values), aes(x = row_number(as.data.frame(CWSaccuracy_values)), y = CWSaccuracy_values)) + geom_line() + geom_point() + xlab("k-fold Cross Validation Iteration") + ylab("Accuracy Score") + ggtitle("Cross Validation Accuracy Scores -- White Sox Batters")
+
+#average accuracy values for above iteration
+print(paste("Average Accuracy: ", mean(CWSaccuracy_valuespitch)))
+
+#plot acuracies for each  kfold cross validation
+ggplot(as.data.frame(CWSaccuracy_valuespitch), aes(x = row_number(as.data.frame(CWSaccuracy_valuespitch)), y = CWSaccuracy_valuespitch)) + geom_line() + geom_point() + xlab("k-fold Cross Validation Iteration") + ylab("Accuracy Score") + ggtitle("Cross Validation Accuracy Scores -- White Sox Pitchers")
+```
+
+The	3-fold CV resulted in an average accuracy of 26.1% for the Washington Nationals batters. The 3-fold CV resulted in an average accuracy of 45.2% for their pitchers.
+```{r KNNresults,include = TRUE, echo = FALSE}
+#average accuracy values for above iteration
+print(paste("Average Accuracy: ", mean(accuracy_values)))
+
+#plot acuracies for each  kfold cross validation
+ggplot(as.data.frame(accuracy_values), aes(x = row_number(as.data.frame(accuracy_values)), y = accuracy_values)) + geom_line() + geom_point() + xlab("k-fold Cross Validation Iteration") + ylab("Accuracy Score") + ggtitle("Cross Validation Accuracy Scores -- Nationals Batters")
+
+#average accuracy values for above iteration
+print(paste("Average Accuracy: ", mean(accuracy_valuespitch)))
+
+#plot acuracies for each  kfold cross validation
+ggplot(as.data.frame(accuracy_valuespitch), aes(x = row_number(as.data.frame(accuracy_valuespitch)), y = accuracy_valuespitch)) + geom_line() + geom_point() + xlab("k-fold Cross Validation Iteration") + ylab("Accuracy Score") + ggtitle("Cross Validation Accuracy Scores -- Nationals Pitchers")
+
+```
+
+
+
+# Conclusions
+
+Can machine learning algorithms identify who they should trade in order to play a little Moneyball? The answer is a qualified yes. The algorithms definitely help to identify players whose salary does not match other players with similar records. However, even with the identification, there needs to be human interpretation of the results.
+
+The Chicago White Sox pay Jose Abreu handsomely, but random forest assigned him to the low salary group. Why? It is not because he is not a good player as his offensive power statistic (OPS), RBIs, and slugging (SLG) are the highest on the team and he is among the highest for on-base percentage (OBP) and batting average. What is discovered through K-Means clustering is that many of the low paid players are similar to Abreu. 
+
+Based on statistics and identification by the different models, the team would be best served by trading the following position players: Adam Engel and Welington Castillo. Castillo is the clearest case as he is high salary but made few appearances with few RBIs and a mediocre batting average. Adam Engel is not on the mismatched salary list however, his batting average amongst the lowest on the team when looking at players with more than 150 at bats. He also has low OBP, SLG, and OPS.   
+
+```{r CWSbattersSalmismatch,include=TRUE,echo=FALSE}
+CWSbattersSalmismatch <- AllResultsRFcwsbatters[AllResultsRFcwsbatters$orig != AllResultsRFcwsbatters$pred,]
+CWSbattersSalmismatch <-  merge(CWSbattersSalmismatch,CWSsalbatstats18reduced,by = "Player2")
+CWSbattersSalmismatch[,c(1,2,3,5,9,15,20,21,22,23)]
+```
+
+```{r CWSbattersSalmatch,include=TRUE,echo=FALSE}
+CWSbattersSalmatch <- AllResultsRFcwsbatters[AllResultsRFcwsbatters$orig == AllResultsRFcwsbatters$pred,]
+CWSbattersSalmatch <-  merge(CWSbattersSalmatch,CWSsalbatstats18reduced,by = "Player2")
+CWSbattersSalmatch[,c(1,2,3,5,6,9,10,15,20,21,22,23)]
+```
+
+For the Chicago pitchers, the trade recommendations are more obvious. Both earned run average ERA and fielding independent percentage (FIP) are the best metrics for pitchers and should be low. Miguel Gonzalez has the highest ERA and FIP. Even more glaring for Gonzalez, he has won no games. Both and Carlos Rodon are in the mid-salary range but do not have the statistics to support such pay. Rodon has a losing record, an ERA over the league average of 4.15, and a FIP of nearly 5. Both Carson Fulmer and Lucas Giolito are low paid pitchers but it is still recommended to trade them as they have a losing record with high ERAs and high FIPS.
+
+```{r CWSpitchersSalmismatch,include=TRUE,echo=FALSE}
+CWSpitchersSalmismatch <- AllResultsRFcwspitchers[AllResultsRFcwspitchers$orig != AllResultsRFcwspitchers$pred,]
+CWSpitchersSalmismatch <-  merge(CWSpitchersSalmismatch,CWSsalpitchstats18reduced,by = "Player2")
+CWSpitchersSalmismatch[,c(1,2,3,5,9,10,16,29)]
+```
+
+
+```{r CWSpitchersSalmatch,include=TRUE,echo=FALSE}
+CWSpitchersSalmatch <- AllResultsRFcwspitchers[AllResultsRFcwspitchers$orig == AllResultsRFcwspitchers$pred,]
+CWSpitchersSalmatch <-  merge(CWSpitchersSalmatch,CWSsalpitchstats18reduced,by = "Player2")
+CWSpitchersSalmatch[,c(1,2,3,5,9,10,16,29)]
+```
+
+The Washington Nationals should look into trading Wilmer Difo, Brian Goodwin, and Matt Wieters. Of these, only Matt Wieters is paid over $2 million dollars. Brian Goodwin has the lowest batting average of any position player and the second lowest OBP, SLG, and OPS of any position player. Difo holds the lowest OBP, SLG, and OPS of the position players and the second worst batting average. Wieters is the third worst position player for all four of those statistics.
+
+```{r WASbattersSalmismatch,include=TRUE,echo=FALSE}
+WASbattersSalmismatch <- AllResultsRFwasbatters[AllResultsRFwasbatters$orig != AllResultsRFwasbatters$pred,]
+WASbattersSalmismatch <-  merge(WASbattersSalmismatch,WASsalbatstats18reduced,by = "Player2")
+WASbattersSalmismatch[,c(1,2,3,5,9,15,20,21,22,23)]
+```
+
+```{r WASbattersSalmatch,include=TRUE,echo=FALSE}
+WASbattersSalmatch <- AllResultsRFwasbatters[AllResultsRFwasbatters$orig == AllResultsRFwasbatters$pred,]
+WASbattersSalmatch <-  merge(WASbattersSalmatch,WASsalbatstats18reduced,by = "Player2")
+WASbattersSalmatch[,c(1,2,3,5,9,15,20,21,22,23)]
+```
+
+With the Washington Nationals pitching staff, Ryan Madson, Tanner Roark, Sammy Solis, AJ Cole, Gio Gonzalez, Trevor Gott, and Enny Romero should all be under consideration for trades. Madson, who earns a high salary, has four saves which is the second highest on the team but, as a reliever, he is the losing pitcher almost as often as he either wins or gets a save. His ERA and FIP are also above the league average. Roark is a mid-salary pitcher, but he is often credited with the loss. Additionally, his ERA and FIP are slightly higher than the league average. Solis has the third highest ERA and a high FIP. His losing record does not show any saves. Cole and Romero duked it out to see who could get the highest ERA and highest FIP. In both cases, Romero “won”. With ERAs over 13, both Cole and Romero should be looking for new teams. Gio Gonzalez, despite having an ERA that is only slightly above the league average, had an incredibly bad win-loss record. As he earns a high salary, it is necessary for the team to look for a pitcher that can bring the wins at a lower cost. Gott has no wins, no saves, and an ERA above the league average. It may have been a fluke season but there is nothing to recommend him to not be traded.
+
+```{r WASpitchersSalmismatch,include=TRUE,echo=FALSE}
+WASpitchersSalmismatch <- AllResultsRFwaspitchers[AllResultsRFwaspitchers$orig != AllResultsRFwaspitchers$pred,]
+WASpitchersSalmismatch <-  merge(WASpitchersSalmismatch,WASsalpitchstats18reduced,by = "Player2")
+WASpitchersSalmismatch[,c(1,2,3,5,9,10,16,29)]
+```
+
+```{r WASpitchersSalmatch,include=TRUE,echo=FALSE}
+WASpitchersSalmatch <- AllResultsRFwaspitchers[AllResultsRFwaspitchers$orig == AllResultsRFwaspitchers$pred,]
+WASpitchersSalmatch <-  merge(WASpitchersSalmatch,WASsalpitchstats18reduced,by = "Player2")
+WASpitchersSalmatch[,c(1,2,3,5,9,10,16,29)]
+```
+
+Of all the position players trade recommendations for either team, only Brian Goodwin and Matt Wieters appear to have been traded between the 2018 and 2019 seasons. The pitcher recommendations were followed by the Washington Nationals to the man. The Chicago White Sox did not follow any of the recommendations. It is not hard to see why the Nationals won the World Series in 2019 while the White Sox continued to lose more than they won. 
